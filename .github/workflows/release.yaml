@@ -1,0 +1,107 @@
+name: Release Artifacts on New Versions
+on:
+  schedule:
+    - cron: "0 0 * * *"
+
+permissions:
+  contents: write
+
+jobs:
+  version_check:
+    name: Version Check
+    outputs:
+      UPSTREAM_VERSION: "${{ steps.latest-releases.outputs.upstream-version }}"
+      RELEASES_VERSION: "${{ steps.latest-releases.outputs.releases-version }}"
+    runs-on: ubuntu-latest
+    timeout-minutes: 600
+    steps:
+      - name: Check latest release in upstream
+        id: latest-releases
+        run: |
+          get_latest_release() {
+            URL="https://github.com/$1/$2/releases/latest"
+
+            VERSION=$(curl -is "$URL" \
+            | grep location \
+            | awk -F '/' '{print $8}')
+
+            echo "${VERSION/$'\r'/}"
+          }
+
+          UPS_VER="$(get_latest_release 'microsoft' 'vscode-java-test')"
+          REL_VER="$(get_latest_release 'nvim-java' 'vscode-java-test-releases')"
+
+          echo "upstream-version=$UPS_VER" >> "$GITHUB_OUTPUT"
+          echo "releases-version=$REL_VER" >> "$GITHUB_OUTPUT"
+
+  linux:
+    name: Linux
+    needs: version_check
+    if: needs.version_check.outputs.UPSTREAM_VERSION != needs.version_check.outputs.RELEASES_VERSION
+    env:
+      VERSION: "${{ needs.version_check.outputs.UPSTREAM_VERSION }}"
+    runs-on: ubuntu-latest
+    timeout-minutes: 600
+    steps:
+      - name: Check with current version
+        run: |
+          # currently the latest version is 0.40.1 but it fail to build so using the main repository
+          # wget "https://github.com/microsoft/vscode-java-test/archive/refs/tags/${VERSION}.tar.gz"
+          # tar xf "${VERSION}.tar.gz" -C . --strip-components=1
+
+          if [ "$VERSION" != "0.40.1" ]; then
+            echo "From the new version, release source files should be used"
+            exit 1
+          fi
+
+          git clone "https://github.com/microsoft/vscode-java-test.git" .
+
+      # NOT SURE IF THIS IS NEEDED
+      # - name: Setup Build Environment
+      #   run: |
+      #     sudo apt-get update
+      #     sudo apt-get install -y libxkbfile-dev pkg-config libsecret-1-dev libxss1 dbus xvfb libgtk-3-0 libgbm1
+      #     sudo /usr/bin/Xvfb :99 -screen 0 1024x768x24 > /dev/null 2>&1 &
+      #     sleep 3
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: "temurin"
+          java-version: "17"
+
+      - name: Setup Node.js environment
+        uses: actions/setup-node@v4
+        with:
+          node-version: 16
+
+      - name: Install Node.js modules
+        run: |
+          npm install
+          npm run build-plugin
+          npm run vscode:prepublish
+          mkdir extension
+          mv \
+            CHANGELOG.md \
+            dist \
+            LICENSE.txt \
+            main.js \
+            package.json \
+            package.nls.json \
+            package.nls.zh.json \
+            README.md \
+            resources \
+            SECURITY.md \
+            server \
+            ThirdPartyNotices.txt \
+            extension
+
+          zip -r "artifacts.zip" extension
+
+      - uses: ncipollo/release-action@v1
+        with:
+          artifacts: "artifacts.zip"
+          allowUpdates: true
+          artifactErrorsFailBuild: true
+          name: "${{ env.VERSION }}"
+          tag: "${{ env.VERSION }}"
