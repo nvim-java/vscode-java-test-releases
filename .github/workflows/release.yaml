@@ -46,15 +46,10 @@ jobs:
       - name: Check with current version
         run: |
           # currently the latest version is 0.40.1 but it fail to build so using the main repository
-          # wget "https://github.com/microsoft/vscode-java-test/archive/refs/tags/${VERSION}.tar.gz"
-          # tar xf "${VERSION}.tar.gz" -C . --strip-components=1
+          wget "https://github.com/microsoft/vscode-java-test/archive/refs/tags/${VERSION}.tar.gz"
+          tar xf "${VERSION}.tar.gz" -C . --strip-components=1
 
-          if [ "$VERSION" != "0.40.1" ]; then
-            echo "From the new version, release source files should be used"
-            exit 1
-          fi
-
-          git clone "https://github.com/microsoft/vscode-java-test.git" .
+          # git clone "https://github.com/microsoft/vscode-java-test.git" .
 
       # NOT SURE IF THIS IS NEEDED
       # - name: Setup Build Environment
